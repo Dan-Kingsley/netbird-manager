@@ -1,7 +1,7 @@
 # Netbird Waybar Manager - Installation Guide
 
 ## Prerequisites
-
+Linux
 Install the required dependencies:
 
 ```bash
