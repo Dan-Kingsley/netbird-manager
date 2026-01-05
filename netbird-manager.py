@@ -33,6 +33,7 @@ class NetbirdManager:
         self.indicator.set_menu(self.build_menu())
         
         self.status_window = None
+        self.current_notification_id = None
         
         # Check initial status and set up a timer for periodic checks
         self.status_updating = False
@@ -126,7 +127,7 @@ class NetbirdManager:
         menu.show_all()
         return menu
 
-    def run_command(self, command):
+    def run_command(self, command, success_msg=None):
         """Run a netbird command in a separate thread"""
         def command_thread():
             try:
@@ -137,9 +138,12 @@ class NetbirdManager:
                     text=True,
                     check=True
                 )
+                if success_msg:
+                    GLib.idle_add(self.show_notification, "Netbird", success_msg, True)
                 GLib.idle_add(self.update_status)
             except (subprocess.CalledProcessError, FileNotFoundError) as e:
-                print(f"Error running command: {e}")
+                error_msg = f"Error: {e.stderr.strip() if hasattr(e, 'stderr') and e.stderr else str(e)}"
+                GLib.idle_add(self.show_notification, "Netbird Error", error_msg, True)
 
         thread = threading.Thread(target=command_thread)
         thread.daemon = True
@@ -147,13 +151,19 @@ class NetbirdManager:
 
     def connect_profile(self, _, profile_name):
         """Connect to a specific Netbird profile"""
-        self.run_command(f"netbird up --profile {profile_name}")
         self.show_notification("Netbird", f"Connecting to {profile_name} profile...")
+        self.run_command(
+            f"netbird up --profile {profile_name}", 
+            success_msg=f"Connected to {profile_name}"
+        )
 
     def disconnect(self, _):
         """Disconnect from Netbird"""
-        self.run_command("netbird down")
         self.show_notification("Netbird", "Disconnecting...")
+        self.run_command(
+            "netbird down", 
+            success_msg="Disconnected"
+        )
 
     def refresh_status(self, dialog, textview):
         """Refresh the status dialog in a separate thread"""
@@ -372,15 +382,26 @@ class NetbirdManager:
         thread.start()
         return False
 
-    def show_notification(self, title, message):
-        """Show a desktop notification"""
+    def show_notification(self, title, message, replace=False):
+        """Show a desktop notification and update current_notification_id"""
         try:
-            subprocess.run([
+            command = [
                 "notify-send",
                 "-a", "Netbird Manager",
-                title,
-                message
-            ])
+                "-p"
+            ]
+            if replace and self.current_notification_id:
+                command.extend(["-r", str(self.current_notification_id)])
+            
+            command.extend([title, message])
+            
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            self.current_notification_id = result.stdout.strip()
         except Exception as e:
             print(f"Error showing notification: {e}")
 
