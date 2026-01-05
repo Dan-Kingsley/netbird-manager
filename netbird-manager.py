@@ -26,6 +26,10 @@ class NetbirdManager:
             AppIndicator3.IndicatorCategory.APPLICATION_STATUS
         )
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+        
+        # Fetch available profiles
+        self.profiles = self.fetch_profiles()
+        
         self.indicator.set_menu(self.build_menu())
         
         self.status_window = None
@@ -63,6 +67,28 @@ class NetbirdManager:
                     print(f"Warning: Could not find StatusNotifierWatcher after {max_wait} seconds")
                     print("Make sure Waybar is running with a tray module configured")
 
+    def fetch_profiles(self):
+        """Fetch available Netbird profiles using 'netbird profile list'"""
+        try:
+            result = subprocess.run(
+                ["netbird", "profile", "list"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            profiles = []
+            # Skip the first line "Found X profiles:"
+            lines = result.stdout.strip().split('\n')
+            for line in lines[1:]:
+                # Line format: "✗ name" or "✓ name"
+                parts = line.strip().split(' ', 1)
+                if len(parts) > 1:
+                    profiles.append(parts[1])
+            return profiles
+        except Exception as e:
+            print(f"Error fetching profiles: {e}")
+            return []
+
     def build_menu(self):
         menu = Gtk.Menu()
         
@@ -75,13 +101,10 @@ class NetbirdManager:
         menu.append(Gtk.SeparatorMenuItem())
         
         # Add profile options
-        item_hinemoa = Gtk.MenuItem(label="Connect: Hinemoa")
-        item_hinemoa.connect('activate', self.connect_hinemoa)
-        menu.append(item_hinemoa)
-        
-        item_stella = Gtk.MenuItem(label="Connect: Stella")
-        item_stella.connect('activate', self.connect_stella)
-        menu.append(item_stella)
+        for profile in self.profiles:
+            item = Gtk.MenuItem(label=f"Connect: {profile}")
+            item.connect('activate', self.connect_profile, profile)
+            menu.append(item)
         
         # Add separator
         menu.append(Gtk.SeparatorMenuItem())
@@ -122,15 +145,10 @@ class NetbirdManager:
         thread.daemon = True
         thread.start()
 
-    def connect_hinemoa(self, _):
-        """Connect to Hinemoa profile"""
-        self.run_command("netbird up --profile hinemoa")
-        self.show_notification("Netbird", "Connecting to Hinemoa profile...")
-
-    def connect_stella(self, _):
-        """Connect to Stella profile"""
-        self.run_command("netbird up --profile stella")
-        self.show_notification("Netbird", "Connecting to Stella profile...")
+    def connect_profile(self, _, profile_name):
+        """Connect to a specific Netbird profile"""
+        self.run_command(f"netbird up --profile {profile_name}")
+        self.show_notification("Netbird", f"Connecting to {profile_name} profile...")
 
     def disconnect(self, _):
         """Disconnect from Netbird"""
